@@ -4,10 +4,11 @@ pragma solidity ^0.8.20;
 import "./interfaces/IERC7857DataVerifier.sol";
 
 contract MockDataVerifier is IERC7857DataVerifier {
-    function verifyTransferValidity(
-        TransferValidityProof[] calldata _proofs
-    ) external pure override returns (TransferValidityProofOutput[] memory) {
-        TransferValidityProofOutput[] memory outputs = new TransferValidityProofOutput[](_proofs.length);
+        function verifyTransferValidity(
+            TransferValidityProof[] calldata _proofs
+        ) external pure override returns (TransferValidityProofOutput[] memory) {
+            // TODO: mock implementation for development and testing. this should be replaced with a real verifier 
+            TransferValidityProofOutput[] memory outputs = new TransferValidityProofOutput[](_proofs.length);
 
         for (uint256 i = 0; i < _proofs.length; i++) {
             outputs[i] = TransferValidityProofOutput({
@@ -25,9 +26,12 @@ contract MockDataVerifier is IERC7857DataVerifier {
     }
 
     // Mock implementation for the newly added mock function in the interface
-    function mockVerifyTransferValidity(
-        TransferValidityProof[] calldata _proofs
-    ) external pure override returns (TransferValidityProofOutput[] memory) {
+    function mockVerifyTransferValidity(TransferValidityProof[] calldata _proofs)
+        external
+        pure
+        override
+        returns (TransferValidityProofOutput[] memory)
+    {
         TransferValidityProofOutput[] memory outputs = new TransferValidityProofOutput[](_proofs.length);
 
         for (uint256 i = 0; i < _proofs.length; i++) {

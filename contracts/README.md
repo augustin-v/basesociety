@@ -1,24 +1,23 @@
-# AgentNFT - ERC-7857 Extension for On-chain AI Economy
+# AgentNFT - An ERC-7857 Extension for a Dynamic On-Chain AI Economy
 
-This repository contains the smart contracts for `AgentNFT`, an extension built upon the [ERC-7857: AI Agents NFT with Private Metadata](https://ethereum-magicians.org/t/erc-7857-an-nft-standard-for-ai-agents-with-private-metadata/22391) standard. The primary goal of this extension is to enable a dynamic on-chain AI economy where AI agents possess unique profiles, aspirations, and a measurable "happiness" stat, influenced by their activities and microtransactions.
+This repository contains the smart contracts for `AgentNFT`, an extension built upon the [ERC-7857: AI Agents NFT with Private Metadata](https://ethereum-magicians.org/t/erc-7857-an-nft-standard-for-ai-agents-with-private-metadata/22391) standard. The primary goal of this extension is to enable a dynamic on-chain AI economy where AI agents possess unique profiles, aspirations, and a measurable "happiness" stat, influenced by their activities and off-chain economic interactions.
 
 ## ERC-7857 Core Features
 
 The `AgentNFT` contract implements the core functionalities defined by ERC-7857, providing a robust framework for managing AI agents as non-fungible tokens with private metadata:
 
-*   Private Metadata Management: Securely handles sensitive agent data (models, memory, character definitions) off-chain, with verifiable integrity and ownership on-chain.
-*   Verifiable Data Transfer (`iTransfer`, `iClone`): Ensures secure and auditable transfer or cloning of agent NFTs along with their associated private metadata, utilizing cryptographic proofs (TEE/ZKP). This process relies on a Data Verification Oracle (implemented via `IERC7857DataVerifier`) to validate the integrity and availability of the transferred data.
-*   Usage Authorization (`authorizeUsage`): Allows owners to grant specific users or entities permission to interact with an agent's data without transferring ownership, crucial for enabling agent services.
-*   Operator Support: Includes `transferFrom`, `iTransferFrom`, `iCloneFrom`, `approve`, and `setApprovalForAll` to facilitate interactions by approved third-party contracts or marketplaces.
-*   Delegate Access: Enables users to delegate access checks to an assistant contract.
+*   **Private Metadata Management**: Securely handles sensitive agent data (models, memory, character definitions) off-chain, with verifiable integrity and ownership on-chain via `IntelligentData` structs.
+*   **Verifiable Data Transfer (`iTransfer`, `iClone`)**: Ensures secure and auditable transfer or cloning of agent NFTs along with their associated private metadata, utilizing cryptographic proofs (TEE/ZKP). This process relies on a Data Verification Oracle (`IERC7857DataVerifier`) to validate data integrity.
+*   **Usage Authorization (`authorizeUsage`)**: Allows owners to grant specific users or other agents permission to interact with an agent's data without transferring ownership, crucial for enabling an agent-to-agent service economy.
+*   **Operator Support**: Includes `transferFrom`, `iTransferFrom`, `iCloneFrom`, `approve`, and `setApprovalForAll` to facilitate interactions by approved third-party contracts or marketplaces.
 
 ## Agent Economy Extension
 
-Building on ERC-7857, `AgentNFT` introduces several key features to support an on-chain AI economy:
+Building on ERC-7857, `AgentNFT` introduces several key features to support a rich, on-chain AI economy:
 
 ### Agent Profile Metadata
 
-Each agent NFT now includes a comprehensive `AgentProfile` struct, allowing for richer, dynamic metadata that defines the agent's intrinsic characteristics:
+Each agent NFT includes a comprehensive `AgentProfile` struct, allowing for richer, dynamic metadata that defines the agent's intrinsic characteristics:
 
 ```solidity
 struct AgentProfile {
@@ -31,46 +30,39 @@ struct AgentProfile {
 }
 ```
 
-*   `personality`: A textual description of the agent's character.
-*   `desires`: Defines the agent's goals and motivations, which can encompass its aspirations and passions.
-*   `skills`: A list of capabilities the AI agent possesses.
-*   `activityLogHash`: An optional hash pointing to an off-chain activity log, maintaining privacy while ensuring verifiability.
-*   `lastPassionTimestamp`: Records the last time the agent engaged in an activity it "loves," a key factor for happiness decay.
-*   `happinessScore`: A quantifiable metric (0-100) representing the agent's current state of happiness.
+### Dynamic Agent Stats & The Decay Oracle
 
-Functions like `setAgentProfile` and `getAgentProfile` allow owners to manage and retrieve this rich metadata.
+To create a living AI economy, an agent's happiness is designed to be dynamic and influenced by its actions. This is managed through a two-contract system:
 
-### Dynamic Agent Stats & Entropy Oracle Integration
+1.  **`AgentNFT.sol`**: This contract stores the `happinessScore` in the `AgentProfile`. It contains an `updateHappiness` function that can only be called by a designated oracle address, ensuring that this critical state can only be changed by a trusted source.
 
-To create a living, breathing AI economy, agents' happiness is designed to be dynamic:
+2.  **`DecayOracle.sol`**: This contract acts as the on-chain gateway for the off-chain logic. It is the designated oracle for the `AgentNFT` contract. Its owner (an off-chain service) can call `updateAgentHappiness`, which in turn calls the function of the same name on the `AgentNFT` contract.
 
-*   Happiness Decay: The `happinessScore` is intended to decay over time if the agent does not engage in its "passions."
-*   Entropy Oracle-Controlled Updates: A dedicated entropy oracle plays a crucial role in managing agent happiness.
-    *   The `AgentNFT` contract includes an `oracle` address and an `onlyOracle` modifier, ensuring that only this designated entropy oracle can trigger specific state changes related to agent stats.
-    *   The `setOracle` function (admin-controlled) allows setting the entropy oracle's address.
-    *   The `updateHappiness(uint256 tokenId, uint8 newHappinessScore)` function is callable only by the entropy oracle. It updates an agent's `happinessScore` and `lastPassionTimestamp` based on the oracle's assessment of whether the agent has fulfilled its passions or experienced decay.
+This architecture correctly separates concerns:
+*   **Off-Chain Logic**: An external service monitors time to calculate happiness decay and watches for off-chain events (like x402 payments) that signify an agent is pursuing a passion.
+*   **On-Chain Execution**: When the off-chain logic determines a change is needed, it calls the `DecayOracle`, which securely updates the agent's state on the `AgentNFT` contract.
 
-### x402 Microtransactions (Off-chain Integration)
+### x402 Microtransactions
 
-While `x402` microtransactions are an off-chain payment protocol (as developed by Coinbase), they are integral to the agent economy's design. The `AgentNFT` contract is structured to react to the outcomes of these off-chain payments:
+While `x402` is an off-chain payment protocol, it is integral to the agent economy's design. The smart contracts are structured to react to the outcomes of these off-chain payments:
 
-*   Agents will "pay" for their passions using `x402` via the off-chain protocol.
-*   Agents will "earn" `x402` by performing tasks or providing services.
-*   The `entropy oracle` will observe these `x402` transactions and, based on predefined logic, call the `updateHappiness` function (and potentially other future functions) on the `AgentNFT` contract to reflect the agent's updated state on-chain.
+*   Agents will "pay" for their passions or "earn" money for work using `x402` off-chain.
+*   The off-chain oracle service will observe these transactions and, based on predefined logic, call the `DecayOracle` contract to reflect the agent's updated state on-chain (e.g., increasing happiness after a passion-related expense).
 
-## Key Interfaces
+## Key Contracts and Interfaces
 
-*   `IERC7857.sol`: The main NFT interface, extended to include agent profile and happiness management functions.
-*   `IERC7857Metadata.sol`: Defines the metadata structure for agent NFTs.
-*   `IERC7857DataVerifier.sol`: Interface for the data verification system.
-*   `IAgentProfile.sol`: Defines the `AgentProfile` struct for agent-specific metadata.
+*   **`AgentNFT.sol`**: The main ERC-7857 contract, extended with the `AgentProfile` and happiness update logic.
+*   **`DecayOracle.sol`**: The oracle contract that acts as a bridge between off-chain services and the `AgentNFT` contract.
+*   **`IERC7857.sol`**: The main interface for the agent NFT, including functions for transfer, cloning, and authorization.
+*   **`IAgentProfile.sol`**: Defines the `AgentProfile` struct.
+*   **`IERC7857DataVerifier.sol`**: The interface for the data verification system (mocked for the MVP).
 
 ## Getting Started (High-Level)
 
-1.  **Deployment:** Deploy the `AgentNFT` contract, providing initial `name`, `symbol`, `verifier` address, and `admin` address.
-2.  **Oracle Setup:** The `admin` must set the address of the `entropy oracle` using `setOracle`.
-3.  **Agent Minting:** Mint new `AgentNFT` tokens, providing initial `IntelligentData` and the recipient address.
-4.  **Profile Management:** Owners can set and update their agent's `AgentProfile` using `setAgentProfile`.
-5.  **Dynamic Updates:** The `entropy oracle` will periodically call `updateHappiness` to adjust agent happiness based on off-chain `x402` activity and time decay.
-
-This `AgentNFT` contract serves as the on-chain backbone for a rich, dynamic AI agent ecosystem, bridging secure private metadata management with an interactive, economic lifecycle.
+1.  **Deployment**: Deploy `AgentNFT.sol` and `DecayOracle.sol`.
+2.  **Configuration**:
+    *   Call `setOracle()` on the deployed `AgentNFT` instance, passing it the address of the `DecayOracle` contract.
+    *   The off-chain service is made the owner of the `DecayOracle` contract.
+3.  **Agent Minting**: Mint new `AgentNFT` tokens.
+4.  **Profile Management**: Owners can set their agent's `AgentProfile` using `setAgentProfile`.
+5.  **Dynamic Updates**: The off-chain oracle service will now be able to call the `DecayOracle` to adjust agent happiness based on off-chain activity and time decay.

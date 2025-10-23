@@ -10,73 +10,44 @@ interface IERC7857 {
     /// @param _from The address that is approving
     /// @param _to The address that is being approved
     /// @param _tokenId The token identifier
-    event Approval(
-        address indexed _from,
-        address indexed _to,
-        uint256 indexed _tokenId
-    );
+    event Approval(address indexed _from, address indexed _to, uint256 indexed _tokenId);
 
     /// @notice The event emitted when an address is approved for all
     /// @param _owner The owner
     /// @param _operator The operator
     /// @param _approved The approval
-    event ApprovalForAll(
-        address indexed _owner,
-        address indexed _operator,
-        bool _approved
-    );
+    event ApprovalForAll(address indexed _owner, address indexed _operator, bool _approved);
 
     /// @notice The event emitted when an address is authorized to use a token
     /// @param _from The address that is authorizing
     /// @param _to The address that is being authorized
     /// @param _tokenId The token identifier
-    event Authorization(
-        address indexed _from,
-        address indexed _to,
-        uint256 indexed _tokenId
-    );
+    event Authorization(address indexed _from, address indexed _to, uint256 indexed _tokenId);
 
     /// @notice The event emitted when an address is revoked from using a token
     /// @param _from The address that is revoking
     /// @param _to The address that is being revoked
     /// @param _tokenId The token identifier
-    event AuthorizationRevoked(
-        address indexed _from,
-        address indexed _to,
-        uint256 indexed _tokenId
-    );
+    event AuthorizationRevoked(address indexed _from, address indexed _to, uint256 indexed _tokenId);
 
     /// @notice The event emitted when a token is transferred
     /// @param _tokenId The token identifier
     /// @param _from The address that is transferring
     /// @param _to The address that is receiving
-    event Transferred(
-        uint256 _tokenId,
-        address indexed _from,
-        address indexed _to
-    );
+    event Transferred(uint256 _tokenId, address indexed _from, address indexed _to);
 
     /// @notice The event emitted when a token is cloned
     /// @param _tokenId The token identifier
     /// @param _newTokenId The new token identifier
     /// @param _from The address that is cloning
     /// @param _to The address that is receiving
-    event Cloned(
-        uint256 indexed _tokenId,
-        uint256 indexed _newTokenId,
-        address _from,
-        address _to
-    );
+    event Cloned(uint256 indexed _tokenId, uint256 indexed _newTokenId, address _from, address _to);
 
     /// @notice The event emitted when a sealed key is published
     /// @param _to The address that is receiving
     /// @param _tokenId The token identifier
     /// @param _sealedKeys The sealed keys
-    event PublishedSealedKey(
-        address indexed _to,
-        uint256 indexed _tokenId,
-        bytes[] _sealedKeys
-    );
+    event PublishedSealedKey(address indexed _to, uint256 indexed _tokenId, bytes[] _sealedKeys);
 
     /// @notice The event emitted when a user is delegated to an assistant
     /// @param _user The user
@@ -104,44 +75,30 @@ interface IERC7857 {
     /// @param _to Address to transfer data to
     /// @param _tokenId The token to transfer data for
     /// @param _proofs Proofs of data available for _to
-    function iTransfer(
-        address _to,
-        uint256 _tokenId,
-        TransferValidityProof[] calldata _proofs
-    ) external;
+    function iTransfer(address _to, uint256 _tokenId, TransferValidityProof[] calldata _proofs) external;
 
     /// @notice Transfers ownership of a token from one address to another address
     /// @param from The current owner of the token
     /// @param to The new owner
     /// @param tokenId The token ID to transfer
-    function transferFrom(
-        address from,
-        address to,
-        uint256 tokenId
-    ) external;
+    function transferFrom(address from, address to, uint256 tokenId) external;
 
     /// @notice Transfers ownership of a token from one address to another address with data proofs
     /// @param from The current owner of the token
     /// @param to The new owner
     /// @param tokenId The token ID to transfer
     /// @param proofs Proofs of data available for _to
-    function iTransferFrom(
-        address from,
-        address to,
-        uint256 tokenId,
-        TransferValidityProof[] calldata proofs
-    ) external;
+    function iTransferFrom(address from, address to, uint256 tokenId, TransferValidityProof[] calldata proofs)
+        external;
 
     /// @notice Clone data
     /// @param _to Address to clone data to
     /// @param _tokenId The token to clone data for
     /// @param _proofs Proofs of data available for _to
     /// @return _newTokenId The ID of the newly cloned token
-    function iClone(
-        address _to,
-        uint256 _tokenId,
-        TransferValidityProof[] calldata _proofs
-    ) external returns (uint256 _newTokenId);
+    function iClone(address _to, uint256 _tokenId, TransferValidityProof[] calldata _proofs)
+        external
+        returns (uint256 _newTokenId);
 
     /// @notice Clones data from one token to a new token, initiated by an approved operator
     /// @param from The current owner of the token to clone
@@ -149,12 +106,9 @@ interface IERC7857 {
     /// @param tokenId The token ID to clone
     /// @param proofs Proofs of data available for _to
     /// @return _newTokenId The ID of the newly cloned token
-    function iCloneFrom(
-        address from,
-        address to,
-        uint256 tokenId,
-        TransferValidityProof[] calldata proofs
-    ) external returns (uint256 _newTokenId);
+    function iCloneFrom(address from, address to, uint256 tokenId, TransferValidityProof[] calldata proofs)
+        external
+        returns (uint256 _newTokenId);
 
     /// @notice Add authorized user to group
     /// @param _tokenId The token to add to group
@@ -187,9 +141,7 @@ interface IERC7857 {
     /// @notice Get the authorized users of a token
     /// @param _tokenId The token identifier
     /// @return The current authorized users of the token
-    function authorizedUsersOf(
-        uint256 _tokenId
-    ) external view returns (address[] memory);
+    function authorizedUsersOf(uint256 _tokenId) external view returns (address[] memory);
 
     /// @notice Get the approved address for a token
     /// @param _tokenId The token identifier
@@ -200,20 +152,14 @@ interface IERC7857 {
     /// @param _owner The owner
     /// @param _operator The operator
     /// @return The approval
-    function isApprovedForAll(
-        address _owner,
-        address _operator
-    ) external view returns (bool);
+    function isApprovedForAll(address _owner, address _operator) external view returns (bool);
 
     /// @notice Get the delegate access for a user
     /// @param _user The user
     /// @return The delegate access
     function getDelegateAccess(address _user) external view returns (address);
 
-    /// @notice Sets the agent profile for a given token ID.
-    /// @param tokenId The token ID of the agent.
-    /// @param newProfile The new AgentProfile to set.
-    function setAgentProfile(uint256 tokenId, AgentProfile calldata newProfile) external;
+
 
     /// @notice Retrieves the agent profile for a given token ID.
     /// @param tokenId The token ID of the agent.

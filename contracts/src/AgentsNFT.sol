@@ -11,7 +11,6 @@ import "./interfaces/IERC7857DataVerifier.sol";
 import "./Utils.sol";
 import {AgentProfile} from "./interfaces/IAgentProfile.sol";
 
-
 contract AgentNFT is
     AccessControlUpgradeable,
     ReentrancyGuardUpgradeable,
@@ -19,17 +18,9 @@ contract AgentNFT is
     IERC7857,
     IERC7857Metadata
 {
-    event Updated(
-        uint256 indexed _tokenId,
-        IntelligentData[] _oldDatas,
-        IntelligentData[] _newDatas
-    );
+    event Updated(uint256 indexed _tokenId, IntelligentData[] _oldDatas, IntelligentData[] _newDatas);
 
-    event Minted(
-        uint256 indexed _tokenId,
-        address indexed _creator,
-        address indexed _owner
-    );
+    event Minted(uint256 indexed _tokenId, address indexed _creator, address indexed _owner);
 
     struct TokenData {
         address owner;
@@ -37,7 +28,6 @@ contract AgentNFT is
         address approvedUser;
         IntelligentData[] iDatas;
     }
-
 
     /// @custom:storage-location erc7201:agent.storage.AgentNFT
     struct AgentNFTStorage {
@@ -72,11 +62,7 @@ contract AgentNFT is
     bytes32 private constant AGENT_NFT_STORAGE_LOCATION =
         0x4aa80aaafbe0e5fe3fe1aa97f3c1f8c65d61f96ef1aab2b448154f4e07594600;
 
-    function _getAgentStorage()
-        private
-        pure
-        returns (AgentNFTStorage storage $)
-    {
+    function _getAgentStorage() private pure returns (AgentNFTStorage storage $) {
         assembly {
             $.slot := AGENT_NFT_STORAGE_LOCATION
         }
@@ -87,12 +73,11 @@ contract AgentNFT is
         _disableInitializers();
     }
 
-    function initialize(
-        string memory name_,
-        string memory symbol_,
-        address verifierAddr,
-        address admin_
-    ) public virtual initializer {
+    function initialize(string memory name_, string memory symbol_, address verifierAddr, address admin_)
+        public
+        virtual
+        initializer
+    {
         require(verifierAddr != address(0), "Zero address");
         require(admin_ != address(0), "Invalid admin address");
 
@@ -110,9 +95,7 @@ contract AgentNFT is
         $.admin = admin_;
     }
 
-    function setAdmin(
-        address newAdmin
-    ) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setAdmin(address newAdmin) external override onlyRole(DEFAULT_ADMIN_ROLE) {
         require(newAdmin != address(0), "Invalid admin address");
         address oldAdmin = _getAgentStorage().admin;
 
@@ -156,61 +139,32 @@ contract AgentNFT is
     }
 
     // Admin functions
-    function updateVerifier(
-        address newVerifier
-    ) public virtual onlyRole(ADMIN_ROLE) {
+    function updateVerifier(address newVerifier) public virtual onlyRole(ADMIN_ROLE) {
         require(newVerifier != address(0), "Zero address");
         _getAgentStorage().verifier = IERC7857DataVerifier(newVerifier);
     }
 
-                function update(
-                    uint256 tokenId,
-                    IntelligentData[] calldata newDatas
-                ) public virtual {
-                    AgentNFTStorage storage $ = _getAgentStorage();
-                    TokenData storage token = $.tokens[tokenId];
-                    require(token.owner == msg.sender, "Not owner");
-                    require(newDatas.length > 0, "Empty data array");
+
+
+
     
-                    IntelligentData[] memory oldDatas = new IntelligentData[](
-                        token.iDatas.length
-                    );
-                    for (uint i = 0; i < token.iDatas.length; i++) {
-                        oldDatas[i] = token.iDatas[i];
-                    }
-    
-                    delete token.iDatas;
-    
-                    for (uint i = 0; i < newDatas.length; i++) {
-                        token.iDatas.push(newDatas[i]);
-                    }
-    
-                    emit Updated(tokenId, oldDatas, newDatas);
-                }
-    
-                            /// @notice Sets the agent profile for a given token ID. Only the owner can call this.
-                            /// @param tokenId The token ID of the agent.
-                            /// @param newProfile The new AgentProfile to set.
-                            function setAgentProfile(uint256 tokenId, AgentProfile calldata newProfile) public virtual {
-                                AgentNFTStorage storage $ = _getAgentStorage();
-                                require($.tokens[tokenId].owner == msg.sender, "Not owner");
-                                $.agentProfiles[tokenId] = newProfile;
-                            }
-                
-                            /// @notice Updates the happiness score and last passion timestamp of an agent.
-                            ///         This function is access-controlled and can only be called by the designated oracle.
-                            /// @param tokenId The token ID of the agent.
-                            /// @param newHappinessScore The new happiness score (0-100).
-                            function updateHappiness(uint256 tokenId, uint8 newHappinessScore) public virtual onlyOracle {
-                                AgentNFTStorage storage $ = _getAgentStorage();
-                                require(_exists(tokenId), "Token does not exist");
-                                require(newHappinessScore <= 100, "Happiness score cannot exceed 100");
-                
-                                $.agentProfiles[tokenId].happinessScore = newHappinessScore;
-                                $.agentProfiles[tokenId].lastPassionTimestamp = block.timestamp;
-                            }    function mint(
+    /// @notice Updates the happiness score and last passion timestamp of an agent.
+    ///         This function is access-controlled and can only be called by the designated oracle.
+    /// @param tokenId The token ID of the agent.
+    /// @param newHappinessScore The new happiness score (0-100).
+    function updateHappiness(uint256 tokenId, uint8 newHappinessScore) public virtual onlyOracle {
+        AgentNFTStorage storage $ = _getAgentStorage();
+        require(_exists(tokenId), "Token does not exist");
+        require(newHappinessScore <= 100, "Happiness score cannot exceed 100");
+
+        $.agentProfiles[tokenId].happinessScore = newHappinessScore;
+        $.agentProfiles[tokenId].lastPassionTimestamp = block.timestamp;
+    }
+
+    function mint(
         IntelligentData[] calldata iDatas,
-        address to
+        address to,
+        AgentProfile calldata profile
     ) public payable virtual returns (uint256 tokenId) {
         require(to != address(0), "Zero address");
         require(iDatas.length > 0, "Empty data array");
@@ -226,15 +180,12 @@ contract AgentNFT is
             newToken.iDatas.push(iDatas[i]);
         }
 
+        $.agentProfiles[tokenId] = profile;
+
         emit Minted(tokenId, msg.sender, to);
     }
 
-    function _proofCheck(
-        address from,
-        address to,
-        uint256 tokenId,
-        TransferValidityProof[] calldata proofs
-    )
+    function _proofCheck(address from, address to, uint256 tokenId, TransferValidityProof[] calldata proofs)
         internal
         returns (bytes[] memory sealedKeys, IntelligentData[] memory newDatas)
     {
@@ -243,30 +194,20 @@ contract AgentNFT is
         require($.tokens[tokenId].owner == from, "Not owner");
         require(proofs.length > 0, "Empty proofs array");
 
-        TransferValidityProofOutput[] memory proofOutput = $
-            .verifier
-            .verifyTransferValidity(proofs);
+        TransferValidityProofOutput[] memory proofOutput = $.verifier.verifyTransferValidity(proofs);
 
-        require(
-            proofOutput.length == $.tokens[tokenId].iDatas.length,
-            "Proof count mismatch"
-        );
+        require(proofOutput.length == $.tokens[tokenId].iDatas.length, "Proof count mismatch");
 
         sealedKeys = new bytes[](proofOutput.length);
         newDatas = new IntelligentData[](proofOutput.length);
 
-        for (uint i = 0; i < proofOutput.length; i++) {
+        for (uint256 i = 0; i < proofOutput.length; i++) {
             // require the initial data hash is the same as the old data hash
-            require(
-                proofOutput[i].oldDataHash ==
-                    $.tokens[tokenId].iDatas[i].dataHash,
-                "Old data hash mismatch"
-            );
+            require(proofOutput[i].oldDataHash == $.tokens[tokenId].iDatas[i].dataHash, "Old data hash mismatch");
 
             // only the receiver itself or the access assistant can sign the access proof
             require(
-                proofOutput[i].accessAssistant == $.accessAssistants[to] ||
-                    proofOutput[i].accessAssistant == to,
+                proofOutput[i].accessAssistant == $.accessAssistants[to] || proofOutput[i].accessAssistant == to,
                 "Access assistant mismatch"
             );
 
@@ -274,19 +215,11 @@ contract AgentNFT is
             bytes memory encryptedPubKey = proofOutput[i].encryptedPubKey;
             if (wantedKey.length == 0) {
                 // if the wanted key is empty, the default wanted receiver is receiver itself
-                address defaultWantedReceiver = Utils.pubKeyToAddress(
-                    encryptedPubKey
-                );
-                require(
-                    defaultWantedReceiver == to,
-                    "Default wanted receiver mismatch"
-                );
+                address defaultWantedReceiver = Utils.pubKeyToAddress(encryptedPubKey);
+                require(defaultWantedReceiver == to, "Default wanted receiver mismatch");
             } else {
                 // if the wanted key is not empty, the data is private
-                require(
-                    Utils.bytesEqual(encryptedPubKey, wantedKey),
-                    "encryptedPubKey mismatch"
-                );
+                require(Utils.bytesEqual(encryptedPubKey, wantedKey), "encryptedPubKey mismatch");
             }
 
             sealedKeys[i] = proofOutput[i].sealedKey;
@@ -298,17 +231,9 @@ contract AgentNFT is
         return (sealedKeys, newDatas);
     }
 
-    function _transfer(
-        address from,
-        address to,
-        uint256 tokenId,
-        TransferValidityProof[] calldata proofs
-    ) internal {
+    function _transfer(address from, address to, uint256 tokenId, TransferValidityProof[] calldata proofs) internal {
         AgentNFTStorage storage $ = _getAgentStorage();
-        (
-            bytes[] memory sealedKeys,
-            IntelligentData[] memory newDatas
-        ) = _proofCheck(from, to, tokenId, proofs);
+        (bytes[] memory sealedKeys, IntelligentData[] memory newDatas) = _proofCheck(from, to, tokenId, proofs);
 
         TokenData storage token = $.tokens[tokenId];
         token.owner = to;
@@ -318,7 +243,7 @@ contract AgentNFT is
         delete token.authorizedUsers;
 
         delete token.iDatas;
-        for (uint i = 0; i < newDatas.length; i++) {
+        for (uint256 i = 0; i < newDatas.length; i++) {
             token.iDatas.push(newDatas[i]);
         }
 
@@ -326,20 +251,12 @@ contract AgentNFT is
         emit PublishedSealedKey(to, tokenId, sealedKeys);
     }
 
-    function iTransfer(
-        address to,
-        uint256 tokenId,
-        TransferValidityProof[] calldata proofs
-    ) public virtual {
+    function iTransfer(address to, uint256 tokenId, TransferValidityProof[] calldata proofs) public virtual {
         require(_isApprovedOrOwner(msg.sender, tokenId), "Not authorized");
         _transfer(ownerOf(tokenId), to, tokenId, proofs);
     }
 
-    function transferFrom(
-        address from,
-        address to,
-        uint256 tokenId
-    ) public virtual {
+    function transferFrom(address from, address to, uint256 tokenId) public virtual {
         TokenData storage token = _getAgentStorage().tokens[tokenId];
         require(_isApprovedOrOwner(msg.sender, tokenId), "Not authorized");
         require(to != address(0), "Zero address");
@@ -353,35 +270,28 @@ contract AgentNFT is
         emit Transferred(tokenId, from, to);
     }
 
-    function iTransferFrom(
-        address from,
-        address to,
-        uint256 tokenId,
-        TransferValidityProof[] calldata proofs
-    ) public virtual {
+    function iTransferFrom(address from, address to, uint256 tokenId, TransferValidityProof[] calldata proofs)
+        public
+        virtual
+    {
         require(_isApprovedOrOwner(msg.sender, tokenId), "Not authorized");
         _transfer(from, to, tokenId, proofs);
     }
 
-    function _clone(
-        address from,
-        address to,
-        uint256 tokenId,
-        TransferValidityProof[] calldata proofs
-    ) internal returns (uint256) {
+    function _clone(address from, address to, uint256 tokenId, TransferValidityProof[] calldata proofs)
+        internal
+        returns (uint256)
+    {
         AgentNFTStorage storage $ = _getAgentStorage();
 
-        (
-            bytes[] memory sealedKeys,
-            IntelligentData[] memory newDatas
-        ) = _proofCheck(from, to, tokenId, proofs);
+        (bytes[] memory sealedKeys, IntelligentData[] memory newDatas) = _proofCheck(from, to, tokenId, proofs);
 
         uint256 newTokenId = $.nextTokenId++;
         TokenData storage newToken = $.tokens[newTokenId];
         newToken.owner = to;
         newToken.approvedUser = address(0);
 
-        for (uint i = 0; i < newDatas.length; i++) {
+        for (uint256 i = 0; i < newDatas.length; i++) {
             newToken.iDatas.push(newDatas[i]);
         }
 
@@ -391,21 +301,20 @@ contract AgentNFT is
         return newTokenId;
     }
 
-    function iClone(
-        address to,
-        uint256 tokenId,
-        TransferValidityProof[] calldata proofs
-    ) public virtual returns (uint256) {
+    function iClone(address to, uint256 tokenId, TransferValidityProof[] calldata proofs)
+        public
+        virtual
+        returns (uint256)
+    {
         require(_isApprovedOrOwner(msg.sender, tokenId), "Not authorized");
         return _clone(ownerOf(tokenId), to, tokenId, proofs);
     }
 
-    function iCloneFrom(
-        address from,
-        address to,
-        uint256 tokenId,
-        TransferValidityProof[] calldata proofs
-    ) public virtual returns (uint256) {
+    function iCloneFrom(address from, address to, uint256 tokenId, TransferValidityProof[] calldata proofs)
+        public
+        virtual
+        returns (uint256)
+    {
         require(_isApprovedOrOwner(msg.sender, tokenId), "Not authorized");
         return _clone(from, to, tokenId, proofs);
     }
@@ -417,12 +326,9 @@ contract AgentNFT is
 
         address[] storage authorizedUsers = $.tokens[tokenId].authorizedUsers;
 
-        require(
-            authorizedUsers.length < MAX_AUTHORIZED_USERS,
-            "Too many authorized users"
-        );
+        require(authorizedUsers.length < MAX_AUTHORIZED_USERS, "Too many authorized users");
 
-        for (uint i = 0; i < authorizedUsers.length; i++) {
+        for (uint256 i = 0; i < authorizedUsers.length; i++) {
             require(authorizedUsers[i] != to, "Already authorized");
         }
 
@@ -437,23 +343,17 @@ contract AgentNFT is
         return owner;
     }
 
-    function authorizedUsersOf(
-        uint256 tokenId
-    ) public view virtual returns (address[] memory) {
+    function authorizedUsersOf(uint256 tokenId) public view virtual returns (address[] memory) {
         AgentNFTStorage storage $ = _getAgentStorage();
         require(_exists(tokenId), "Token does not exist");
         return $.tokens[tokenId].authorizedUsers;
     }
 
- 
-
     function _exists(uint256 tokenId) internal view returns (bool) {
         return _getAgentStorage().tokens[tokenId].owner != address(0);
     }
 
-    function intelligentDataOf(
-        uint256 tokenId
-    ) public view virtual returns (IntelligentData[] memory) {
+    function intelligentDataOf(uint256 tokenId) public view virtual returns (IntelligentData[] memory) {
         AgentNFTStorage storage $ = _getAgentStorage();
         require(_exists(tokenId), "Token does not exist");
         return $.tokens[tokenId].iDatas;
@@ -471,10 +371,7 @@ contract AgentNFT is
     function approve(address to, uint256 tokenId) public virtual {
         address owner = ownerOf(tokenId);
         require(to != owner, "Approval to current owner");
-        require(
-            msg.sender == owner || isApprovedForAll(owner, msg.sender),
-            "Not authorized"
-        );
+        require(msg.sender == owner || isApprovedForAll(owner, msg.sender), "Not authorized");
 
         _getAgentStorage().tokens[tokenId].approvedUser = to;
         emit Approval(owner, to, tokenId);
@@ -486,17 +383,12 @@ contract AgentNFT is
         emit ApprovalForAll(msg.sender, operator, approved);
     }
 
-    function getApproved(
-        uint256 tokenId
-    ) public view virtual returns (address) {
+    function getApproved(uint256 tokenId) public view virtual returns (address) {
         require(_exists(tokenId), "Token does not exist");
         return _getAgentStorage().tokens[tokenId].approvedUser;
     }
 
-    function isApprovedForAll(
-        address owner,
-        address operator
-    ) public view virtual returns (bool) {
+    function isApprovedForAll(address owner, address operator) public view virtual returns (bool) {
         return _getAgentStorage().operatorApprovals[owner][operator];
     }
 
@@ -506,43 +398,30 @@ contract AgentNFT is
         emit DelegateAccess(msg.sender, assistant);
     }
 
-    function getDelegateAccess(
-        address user
-    ) public view virtual returns (address) {
+    function getDelegateAccess(address user) public view virtual returns (address) {
         return _getAgentStorage().accessAssistants[user];
     }
 
-    function _isApprovedOrOwner(
-        address spender,
-        uint256 tokenId
-    ) internal view returns (bool) {
+    function _isApprovedOrOwner(address spender, uint256 tokenId) internal view returns (bool) {
         require(_exists(tokenId), "Token does not exist");
         address owner = ownerOf(tokenId);
-        return (spender == owner ||
-            getApproved(tokenId) == spender ||
-            isApprovedForAll(owner, spender));
+        return (spender == owner || getApproved(tokenId) == spender || isApprovedForAll(owner, spender));
     }
 
-    function batchAuthorizeUsage(
-        uint256 tokenId,
-        address[] calldata users
-    ) public virtual {
+    function batchAuthorizeUsage(uint256 tokenId, address[] calldata users) public virtual {
         require(users.length > 0, "Empty users array");
         AgentNFTStorage storage $ = _getAgentStorage();
         require($.tokens[tokenId].owner == msg.sender, "Not owner");
 
         address[] storage authorizedUsers = $.tokens[tokenId].authorizedUsers;
 
-        require(
-            authorizedUsers.length + users.length <= MAX_AUTHORIZED_USERS,
-            "Too many authorized users"
-        );
+        require(authorizedUsers.length + users.length <= MAX_AUTHORIZED_USERS, "Too many authorized users");
 
-        for (uint i = 0; i < users.length; i++) {
+        for (uint256 i = 0; i < users.length; i++) {
             require(users[i] != address(0), "Zero address in users");
 
             bool alreadyAuthorized = false;
-            for (uint j = 0; j < authorizedUsers.length; j++) {
+            for (uint256 j = 0; j < authorizedUsers.length; j++) {
                 if (authorizedUsers[j] == users[i]) {
                     alreadyAuthorized = true;
                     break;
@@ -550,7 +429,7 @@ contract AgentNFT is
             }
             require(!alreadyAuthorized, "User already authorized");
 
-            for (uint k = 0; k < i; k++) {
+            for (uint256 k = 0; k < i; k++) {
                 require(users[k] != users[i], "Duplicate user in batch");
             }
 
@@ -567,11 +446,9 @@ contract AgentNFT is
         address[] storage authorizedUsers = $.tokens[tokenId].authorizedUsers;
         bool found = false;
 
-        for (uint i = 0; i < authorizedUsers.length; i++) {
+        for (uint256 i = 0; i < authorizedUsers.length; i++) {
             if (authorizedUsers[i] == user) {
-                authorizedUsers[i] = authorizedUsers[
-                    authorizedUsers.length - 1
-                ];
+                authorizedUsers[i] = authorizedUsers[authorizedUsers.length - 1];
                 authorizedUsers.pop();
                 found = true;
                 break;
@@ -590,8 +467,5 @@ contract AgentNFT is
         emit AuthorizedUsersCleared(msg.sender, tokenId);
     }
 
-    event AuthorizedUsersCleared(
-        address indexed owner,
-        uint256 indexed tokenId
-    );
+    event AuthorizedUsersCleared(address indexed owner, uint256 indexed tokenId);
 }

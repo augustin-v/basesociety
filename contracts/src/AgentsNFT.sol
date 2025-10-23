@@ -9,6 +9,8 @@ import "./interfaces/IERC7857.sol";
 import "./interfaces/IERC7857Metadata.sol";
 import "./interfaces/IERC7857DataVerifier.sol";
 import "./Utils.sol";
+import {AgentProfile} from "./interfaces/IAgentProfile.sol";
+
 
 contract AgentNFT is
     AccessControlUpgradeable,
@@ -36,6 +38,7 @@ contract AgentNFT is
         IntelligentData[] iDatas;
     }
 
+
     /// @custom:storage-location erc7201:agent.storage.AgentNFT
     struct AgentNFTStorage {
         // Token data
@@ -43,17 +46,23 @@ contract AgentNFT is
         mapping(address owner => mapping(address operator => bool)) operatorApprovals;
         mapping(address user => address accessAssistant) accessAssistants;
         uint256 nextTokenId;
+        mapping(uint256 => AgentProfile) agentProfiles; // Agent profile metadata
         // Contract metadata
         string name;
         string symbol;
-        string storageInfo;
         // Core components
         IERC7857DataVerifier verifier;
         address admin;
+        address oracle; // Address of the entropy oracle
     }
 
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+
+    modifier onlyOracle() {
+        require(msg.sender == _getAgentStorage().oracle, "Only oracle can call this function");
+        _;
+    }
 
     uint256 public constant MAX_AUTHORIZED_USERS = 100;
 
@@ -81,7 +90,6 @@ contract AgentNFT is
     function initialize(
         string memory name_,
         string memory symbol_,
-        string memory storageInfo_,
         address verifierAddr,
         address admin_
     ) public virtual initializer {
@@ -98,7 +106,6 @@ contract AgentNFT is
         AgentNFTStorage storage $ = _getAgentStorage();
         $.name = name_;
         $.symbol = symbol_;
-        $.storageInfo = storageInfo_;
         $.verifier = IERC7857DataVerifier(verifierAddr);
         $.admin = admin_;
     }
@@ -122,6 +129,13 @@ contract AgentNFT is
 
             emit AdminChanged(oldAdmin, newAdmin);
         }
+    }
+
+    /// @notice Sets the address of the entropy oracle. Only callable by an admin.
+    /// @param newOracle The address of the new entropy oracle.
+    function setOracle(address newOracle) external onlyRole(ADMIN_ROLE) {
+        require(newOracle != address(0), "Zero address");
+        _getAgentStorage().oracle = newOracle;
     }
 
     // Basic getters
@@ -149,32 +163,52 @@ contract AgentNFT is
         _getAgentStorage().verifier = IERC7857DataVerifier(newVerifier);
     }
 
-    function update(
-        uint256 tokenId,
-        IntelligentData[] calldata newDatas
-    ) public virtual {
-        AgentNFTStorage storage $ = _getAgentStorage();
-        TokenData storage token = $.tokens[tokenId];
-        require(token.owner == msg.sender, "Not owner");
-        require(newDatas.length > 0, "Empty data array");
-
-        IntelligentData[] memory oldDatas = new IntelligentData[](
-            token.iDatas.length
-        );
-        for (uint i = 0; i < token.iDatas.length; i++) {
-            oldDatas[i] = token.iDatas[i];
-        }
-
-        delete token.iDatas;
-
-        for (uint i = 0; i < newDatas.length; i++) {
-            token.iDatas.push(newDatas[i]);
-        }
-
-        emit Updated(tokenId, oldDatas, newDatas);
-    }
-
-    function mint(
+                function update(
+                    uint256 tokenId,
+                    IntelligentData[] calldata newDatas
+                ) public virtual {
+                    AgentNFTStorage storage $ = _getAgentStorage();
+                    TokenData storage token = $.tokens[tokenId];
+                    require(token.owner == msg.sender, "Not owner");
+                    require(newDatas.length > 0, "Empty data array");
+    
+                    IntelligentData[] memory oldDatas = new IntelligentData[](
+                        token.iDatas.length
+                    );
+                    for (uint i = 0; i < token.iDatas.length; i++) {
+                        oldDatas[i] = token.iDatas[i];
+                    }
+    
+                    delete token.iDatas;
+    
+                    for (uint i = 0; i < newDatas.length; i++) {
+                        token.iDatas.push(newDatas[i]);
+                    }
+    
+                    emit Updated(tokenId, oldDatas, newDatas);
+                }
+    
+                            /// @notice Sets the agent profile for a given token ID. Only the owner can call this.
+                            /// @param tokenId The token ID of the agent.
+                            /// @param newProfile The new AgentProfile to set.
+                            function setAgentProfile(uint256 tokenId, AgentProfile calldata newProfile) public virtual {
+                                AgentNFTStorage storage $ = _getAgentStorage();
+                                require($.tokens[tokenId].owner == msg.sender, "Not owner");
+                                $.agentProfiles[tokenId] = newProfile;
+                            }
+                
+                            /// @notice Updates the happiness score and last passion timestamp of an agent.
+                            ///         This function is access-controlled and can only be called by the designated oracle.
+                            /// @param tokenId The token ID of the agent.
+                            /// @param newHappinessScore The new happiness score (0-100).
+                            function updateHappiness(uint256 tokenId, uint8 newHappinessScore) public virtual onlyOracle {
+                                AgentNFTStorage storage $ = _getAgentStorage();
+                                require(_exists(tokenId), "Token does not exist");
+                                require(newHappinessScore <= 100, "Happiness score cannot exceed 100");
+                
+                                $.agentProfiles[tokenId].happinessScore = newHappinessScore;
+                                $.agentProfiles[tokenId].lastPassionTimestamp = block.timestamp;
+                            }    function mint(
         IntelligentData[] calldata iDatas,
         address to
     ) public payable virtual returns (uint256 tokenId) {
@@ -411,23 +445,27 @@ contract AgentNFT is
         return $.tokens[tokenId].authorizedUsers;
     }
 
-    function storageInfo(
-        uint256 tokenId
-    ) public view virtual returns (string memory) {
-        require(_exists(tokenId), "Token does not exist");
-        return _getAgentStorage().storageInfo;
-    }
+ 
 
     function _exists(uint256 tokenId) internal view returns (bool) {
         return _getAgentStorage().tokens[tokenId].owner != address(0);
     }
 
-    function intelligentDatasOf(
+    function intelligentDataOf(
         uint256 tokenId
     ) public view virtual returns (IntelligentData[] memory) {
         AgentNFTStorage storage $ = _getAgentStorage();
         require(_exists(tokenId), "Token does not exist");
         return $.tokens[tokenId].iDatas;
+    }
+
+    /// @notice Retrieves the agent profile for a given token ID.
+    /// @param tokenId The token ID of the agent.
+    /// @return The AgentProfile of the agent.
+    function getAgentProfile(uint256 tokenId) public view virtual returns (AgentProfile memory) {
+        AgentNFTStorage storage $ = _getAgentStorage();
+        require(_exists(tokenId), "Token does not exist");
+        return $.agentProfiles[tokenId];
     }
 
     function approve(address to, uint256 tokenId) public virtual {

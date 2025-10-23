@@ -16,5 +16,5 @@ interface IERC7857Metadata {
     /// @notice Get the data hash of a token
     /// @param _tokenId The token identifier
     /// @return The current data hash of the token
-    function intelligentDatasOf(uint256 _tokenId) external view returns (IntelligentData[] memory);
+    function intelligentDataOf(uint256 _tokenId) external view returns (IntelligentData[] memory);
 }

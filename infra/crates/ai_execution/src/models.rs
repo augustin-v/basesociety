@@ -1,10 +1,12 @@
 use rig::agent::Agent as RigAgent;
-use rig::providers::openai::responses_api::ResponsesCompletionModel;
+use rig::providers::openai::responses_api::{ResponsesCompletionModel, Role};
 use reqwest::Client as ReqwestClient;  // for <reqwest::Client> in generic
-
+use chrono::{DateTime, Utc};
+use futures::channel::oneshot;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::{collections::HashMap, sync::{Arc, RwLock}};
+use tokio::sync::{mpsc, Mutex};
 
 /// Represents the public profile of an AI agent.
 /// This information is used to define the agent's personality and capabilities.
@@ -37,13 +39,39 @@ pub struct InteractResponse {
     pub response: String,
 }
 
-/// Represents a running agent in the system.
-/// This includes its ID, profile, and the underlying `rig` instance.
+// Custom message with origin and timestamp for persistent history.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CustomMessage {
+    pub role: Role,
+    pub content: String,
+    pub origin: Origin,
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Origin of a message in agent history.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum Origin {
+    Agent,
+    Owner,
+    System,
+}
+
+/// Commands to inject into an agent's channel.
+#[derive(Debug)]
+pub enum ChatCommand {
+    AddMessage(CustomMessage),
+    GetHistory { tx: oneshot::Sender<Vec<CustomMessage>> },
+    Reflect,
+}
+
+/// Updated Agent struct with history and command channel.
 #[derive(Clone)]
 pub struct Agent {
     pub id: String,
     pub profile: AgentProfile,
-    pub rig: RigAgent<ResponsesCompletionModel<ReqwestClient>>, 
+    pub rig: RigAgent<ResponsesCompletionModel<ReqwestClient>>,
+    pub history: Arc<Mutex<Vec<CustomMessage>>>,
+    pub cmd_tx: mpsc::Sender<ChatCommand>,
 }
 
 /// Represents the information about a running agent that is returned by the API.

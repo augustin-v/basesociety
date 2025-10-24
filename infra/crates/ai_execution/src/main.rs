@@ -11,7 +11,7 @@ use std::{
 };
 use tracing::info;
 
-use crate::handlers::{interact_agent, launch_agent, list_agents, delete_agent};
+use crate::handlers::{interact_agent, launch_agent, list_agents, delete_agent, get_history};
 
 const DB_URL: &str = "sqlite:agents.db";
 
@@ -45,6 +45,7 @@ async fn main() {
         .route("/", post(launch_agent).get(list_agents))  // POST/GET /agents
         .route("/{id}/interact", post(interact_agent))     // POST /agents/{id}/interact
         .route("/{id}", delete(delete_agent))              // DELETE /agents/{id}
+        .route("/{id}/history", get(get_history))  // GET 
     )
     .with_state(state);
 

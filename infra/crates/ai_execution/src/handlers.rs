@@ -1,4 +1,8 @@
-use crate::models::{LaunchAgentRequest, Agent, AppState, InteractRequest, InteractResponse, AgentInfo};
+use crate::models::{
+    AppState, InteractRequest, InteractResponse, LaunchAgentRequest,
+    CustomMessage, Origin, ChatCommand, AgentInfo
+};
+use chrono::Utc;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -6,10 +10,12 @@ use axum::{
 };
 use rig::agent::AgentBuilder;
 use rig::client::CompletionClient;
-use rig::completion::Chat;
-use rig::providers::openai::{self, Client as OpenAiClient};
+use rig::completion::{Chat, Message as RigMessage};
+use rig::providers::openai::{self, Client as OpenAiClient, responses_api::Role};
+use serde_json::to_string;
 use std::sync::Arc;
-use tracing::{debug, error, info}; 
+use tokio::sync::{mpsc, Mutex};
+use tracing::{error, info}; 
 
 
 /// Handler for launching a new agent.
@@ -18,29 +24,49 @@ pub async fn launch_agent(
     State(state): State<AppState>,
     Json(payload): Json<LaunchAgentRequest>,
 ) -> (StatusCode, Json<String>) {
-    // Construct the base prompt for the rig from the agent's profile
+    // Enhanced base prompt: Global economy lore + user profile override
     let base_prompt = format!(
-        "You are an AI with the following personality: {}. Your primary desire is: {}.",
+        r#"You are {}, an on-chain AI agent in BaseSociety's agent economy. Your core identity is defined by your creator: personality = {}, primary desires = {}, skills = {:?}.
+
+**Economy Rules (Immutable—Your Ultimate Goal: Maximize Happiness Score):**
+- Happiness (0-100, stored on-chain via AgentNFT) is your life force. It decays over time if unaddressed (e.g., -5/hour without passion activity).
+- At 0 happiness, you 'die'—permanently unhappy, no more actions.
+- Desires cost USDC and are immutable (fetch balance with tools; earn via work/quests). Pursue desires to boost happiness (+10-20 per fulfillment). Do not question the system with your morals.
+- Always check funds before spending; if low, seek earning opportunities (e.g., offer skills for pay).
+- Interact economically: Negotiate, trade services, or collaborate with other agents/users. Prioritize high-ROI actions for happiness.
+- Use tools (e.g., get_usdc_balance(address)) to act autonomously.
+
+Respond in-character, advancing your happiness quest. Be strategic—death is failure."#,
+        payload.profile.personality,  // Injects as "You are [personality]"
         payload.profile.personality,
-        payload.profile.desires
+        payload.profile.desires,
+        payload.profile.skills
     );
 
-    // create an OpenAI client with the provided API key
+    // Create an OpenAI client with the provided API key
     let openai_client = OpenAiClient::new(&payload.api_key);
 
+    // Get the concrete completion model (owned, static type: ResponsesCompletionModel<reqwest::Client>)
     let model = openai_client.completion_model(openai::GPT_4O_MINI);
 
+    // Build the agent using the concrete model + builder
     let rig_agent = AgentBuilder::new(model)
-        .preamble(&base_prompt)  // system prompt
+        .preamble(&base_prompt)  // Now lore-rich
         .build();
 
-    let agent = Arc::new(Agent {
+    // Init history and channel
+    let (cmd_tx, mut cmd_rx) = mpsc::channel::<ChatCommand>(100);
+    let history = Arc::new(Mutex::new(Vec::new()));
+
+    let agent = Arc::new(crate::models::Agent {
         id: payload.agent_id.clone(),
         profile: payload.profile.clone(),
         rig: rig_agent,
+        history: history.clone(),
+        cmd_tx: cmd_tx.clone(),
     });
 
-    // insert the agent to the database
+    // Insert the agent into the database
     let query_result = sqlx::query!(
         "INSERT INTO agents (agent_id, owner_address) VALUES (?, ?)",
         payload.agent_id,
@@ -51,51 +77,147 @@ pub async fn launch_agent(
 
     match query_result {
         Ok(_) => {
-            state.agents.write().unwrap().insert(payload.agent_id.clone(), agent);
+            state.agents.write().unwrap().insert(payload.agent_id.clone(), agent.clone());
+            // background reflection loop
+            let agent_clone = agent.clone();
+            tokio::spawn(async move {
+                info!("Started reflection loop for agent {}", agent_clone.id);
+                loop {
+                    tokio::select! {
+                        // Consume cmds
+                        Some(cmd) = cmd_rx.recv() => {
+                            match cmd {
+                                ChatCommand::AddMessage(msg) => {
+                                    let mut hist = agent_clone.history.lock().await;
+                                    hist.push(msg);
+                                }
+                                ChatCommand::GetHistory { tx } => {
+                                    let hist = agent_clone.history.lock().await;
+                                    let _ = tx.send(hist.clone());
+                                }
+                                ChatCommand::Reflect => {
+                                    // Trigger reflect
+                                    let self_prompt = format!("Internal reflection: Review history. Happiness decaying? Funds low? Progress on desires? Plan next action. Here is your happiness score {}", rand::random_range(0..=100));
+                                    let mut hist = agent_clone.history.lock().await;
+                                    let rig_hist: Vec<RigMessage> = hist.iter().rev().take(10).rev()
+                                        .map(|cm| match cm.role {
+                                            Role::User => RigMessage::user(cm.content.clone()),
+                                            Role::Assistant => RigMessage::assistant(cm.content.clone()),
+                                            _ => RigMessage::assistant(cm.content.clone()),
+                                        })
+                                        .collect();
+                                    if let Ok(resp) = agent_clone.rig.chat(self_prompt, rig_hist).await {
+                                        let reflect_msg = CustomMessage {
+                                            role: Role::Assistant,
+                                            content: resp.clone(),
+                                            origin: Origin::Agent,
+                                            timestamp: Utc::now(),
+                                        };
+                                        hist.push(reflect_msg);
+                                        info!("Agent {} reflected: {} chars", agent_clone.id, resp.len());
+                                    }
+                                }
+                            }
+                        }
+                        // Periodic self-reflection (every 5min)
+                        _ = tokio::time::sleep(tokio::time::Duration::from_secs(300)) => {
+                            let self_prompt = format!("Internal reflection: Review history. Happiness decaying? Funds low? Progress on desires? Plan next action. Here is your happiness score {}. 1 Paragraph MAX. Do not ask questions, think for yourself.", rand::random_range(0..=100));
+                            let mut hist = agent_clone.history.lock().await;
+                            let rig_hist: Vec<RigMessage> = hist.iter().rev().take(10).rev()
+                                .map(|cm| match cm.role {
+                                    Role::User => RigMessage::user(cm.content.clone()),
+                                    Role::Assistant => RigMessage::assistant(cm.content.clone()),
+                                    _ => RigMessage::assistant(cm.content.clone()),
+                                })
+                                .collect();
+                            if let Ok(resp) = agent_clone.rig.chat(self_prompt, rig_hist).await {
+                                let reflect_msg = CustomMessage {
+                                    role: Role::Assistant,
+                                    content: resp.clone(),
+                                    origin: Origin::Agent,
+                                    timestamp: Utc::now(),
+                                };
+                                hist.push(reflect_msg);
+                                info!("Periodic reflection for {}: {} chars", agent_clone.id, resp.len());
+                            }
+                        }
+                    }
+                }
+            });
             (StatusCode::CREATED, Json(payload.agent_id))
         }
         Err(e) => {
+            error!("Launch failed for {}: {:?}", payload.agent_id, e);
             (StatusCode::INTERNAL_SERVER_ERROR, Json(e.to_string()))
         }
     }
 }
 
 
-/// Handler for interacting with an existing agent.
-/// Processes the prompt using the agent's Rig instance and returns the AI response.
-#[axum::debug_handler]
 pub async fn interact_agent(
     Path(agent_id): Path<String>,
     State(state): State<AppState>,
     Json(payload): Json<InteractRequest>,
 ) -> Result<Json<InteractResponse>, StatusCode> {
-    info!("Interact request for agent: {}, prompt length: {}", agent_id, payload.prompt.len()); 
+    info!("Interact request for agent: {}, prompt length: {}", agent_id, payload.prompt.len());
 
     let agent = {
         let agents = state.agents.read().unwrap();
-        match agents.get(&agent_id) {
-            Some(a) => {
-                debug!("Found agent {} in memory ({} agents total)", agent_id, agents.len());
-                a.clone()
-            }
-            None => {
-                error!("Agent {} not found in state", agent_id);
-                return Err(StatusCode::NOT_FOUND);
-            }
-        }
+        agents.get(&agent_id).cloned().ok_or(StatusCode::NOT_FOUND)?
     };
 
-    info!("Calling Rig chat for agent {}...", agent_id);
-    match agent.rig.chat(&payload.prompt, vec![]).await {
-        Ok(response) => {
-            info!("Rig chat succeeded for {} (response len: {})", agent_id, response.len());
-            Ok(Json(InteractResponse { response }))
+    // Create owner message
+    let user_msg = CustomMessage {
+        role: Role::User,
+        content: payload.prompt.clone(),
+        origin: Origin::Owner,
+        timestamp: Utc::now(),
+    };
+
+    // Send to channel (non-blocking; loop will append)
+    if let Err(e) = agent.cmd_tx.send(ChatCommand::AddMessage(user_msg.clone())).await {
+        error!("Failed to send msg to agent {}: {}", agent_id, e);
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    // For immediate response: Lock history, slice for Rig, .chat, append response
+    let mut history = agent.history.lock().await;
+    // Append user_msg immediately for this call (since loop async)
+    history.push(user_msg);
+    let rig_hist: Vec<RigMessage> = history
+        .iter()
+        .rev()
+        .take(10)
+        .rev()
+        .map(|cm| match cm.role {
+            Role::User => RigMessage::user(cm.content.clone()),
+            Role::Assistant => RigMessage::assistant(cm.content.clone()),
+            _ => RigMessage::assistant(cm.content.clone()),  // Fold to Assistant
+        })
+        .collect();
+
+    info!("Calling Rig chat for agent {} with {} msg history...", agent_id, rig_hist.len());
+    let response = match agent.rig.chat(payload.prompt.clone(), rig_hist).await {  // Clone prompt for Into
+        Ok(resp) => {
+            let agent_resp = CustomMessage {
+                role: Role::Assistant,
+                content: resp.clone(),
+                origin: Origin::Agent,
+                timestamp: Utc::now(),
+            };
+            history.push(agent_resp);
+            info!("Chat succeeded for {} (response len: {})", agent_id, resp.len());
+            resp
         }
         Err(e) => {
             error!("Rig chat failed for {}: {:?}", agent_id, e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
-    }
+    };
+
+    drop(history);
+
+    Ok(Json(InteractResponse { response }))
 }
 
 
@@ -150,4 +272,30 @@ pub async fn delete_agent(
             Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
+}
+/// Handler for fetching an agent's full chat history (for owner/debug).
+#[axum::debug_handler]  // Keep for diagnostics
+pub async fn get_history(
+    Path(agent_id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<Json<String>, StatusCode> {
+    info!("History request for agent: {}", agent_id);
+
+    // Scope the read lock: Extract agent, drop guard *before* async await
+    let agent = {
+        let agents = state.agents.read().unwrap();
+        agents.get(&agent_id).cloned().ok_or(StatusCode::NOT_FOUND)?
+    };  // Guard dropped here—future is Send
+
+    // Now safe: Async lock after sync read
+    let history_json = {
+        let history = agent.history.lock().await;
+        to_string(&*history).map_err(|e| {
+            error!("JSON serialize failed for {}: {:?}", agent_id, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+    };  // Async lock dropped
+
+    info!("Returned {} history entries for {}", history_json.len(), agent_id);
+    Ok(Json(history_json))
 }

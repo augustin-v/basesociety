@@ -1,12 +1,15 @@
-use rig::agent::Agent as RigAgent;
-use rig::providers::openai::responses_api::{ResponsesCompletionModel, Role};
-use reqwest::Client as ReqwestClient;  // for <reqwest::Client> in generic
 use chrono::{DateTime, Utc};
 use futures::channel::oneshot;
+use reqwest::Client as ReqwestClient; // for <reqwest::Client> in generic
+use rig::agent::Agent as RigAgent;
+use rig::providers::openai::responses_api::{ResponsesCompletionModel, Role};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
-use std::{collections::HashMap, sync::{Arc, RwLock}};
-use tokio::sync::{mpsc, Mutex};
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+};
+use tokio::sync::{Mutex, mpsc};
 
 /// Represents the public profile of an AI agent.
 /// This information is used to define the agent's personality and capabilities.
@@ -60,7 +63,9 @@ pub enum Origin {
 #[derive(Debug)]
 pub enum ChatCommand {
     AddMessage(CustomMessage),
-    GetHistory { tx: oneshot::Sender<Vec<CustomMessage>> },
+    GetHistory {
+        tx: oneshot::Sender<Vec<CustomMessage>>,
+    },
     Reflect,
 }
 

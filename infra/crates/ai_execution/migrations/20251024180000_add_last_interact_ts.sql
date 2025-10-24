@@ -1,0 +1,1 @@
+ALTER TABLE agents ADD COLUMN last_interact_ts INTEGER DEFAULT 0;

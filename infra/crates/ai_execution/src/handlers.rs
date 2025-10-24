@@ -1,22 +1,21 @@
 use crate::models::{
-    AppState, InteractRequest, InteractResponse, LaunchAgentRequest,
-    CustomMessage, Origin, ChatCommand, AgentInfo
+    AgentInfo, AppState, ChatCommand, CustomMessage, InteractRequest, InteractResponse,
+    LaunchAgentRequest, Origin,
 };
-use chrono::Utc;
 use axum::{
+    Json,
     extract::{Path, State},
     http::StatusCode,
-    Json,
 };
+use chrono::Utc;
 use rig::agent::AgentBuilder;
 use rig::client::CompletionClient;
 use rig::completion::{Chat, Message as RigMessage};
 use rig::providers::openai::{self, Client as OpenAiClient, responses_api::Role};
 use serde_json::to_string;
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
-use tracing::{error, info}; 
-
+use tokio::sync::{Mutex, mpsc};
+use tracing::{error, info};
 
 /// Handler for launching a new agent.
 /// This will create a new agent, store it in the database, and add it to the in-memory state.
@@ -37,7 +36,7 @@ pub async fn launch_agent(
 - Use tools (e.g., get_usdc_balance(address)) to act autonomously.
 
 Respond in-character, advancing your happiness quest. Be strategic—death is failure."#,
-        payload.profile.personality,  // Injects as "You are [personality]"
+        payload.profile.personality, // Injects as "You are [personality]"
         payload.profile.personality,
         payload.profile.desires,
         payload.profile.skills
@@ -51,7 +50,7 @@ Respond in-character, advancing your happiness quest. Be strategic—death is fa
 
     // Build the agent using the concrete model + builder
     let rig_agent = AgentBuilder::new(model)
-        .preamble(&base_prompt)  // Now lore-rich
+        .preamble(&base_prompt) // Now lore-rich
         .build();
 
     // Init history and channel
@@ -77,7 +76,11 @@ Respond in-character, advancing your happiness quest. Be strategic—death is fa
 
     match query_result {
         Ok(_) => {
-            state.agents.write().unwrap().insert(payload.agent_id.clone(), agent.clone());
+            state
+                .agents
+                .write()
+                .unwrap()
+                .insert(payload.agent_id.clone(), agent.clone());
             // background reflection loop
             let agent_clone = agent.clone();
             tokio::spawn(async move {
@@ -153,17 +156,23 @@ Respond in-character, advancing your happiness quest. Be strategic—death is fa
     }
 }
 
-
 pub async fn interact_agent(
     Path(agent_id): Path<String>,
     State(state): State<AppState>,
     Json(payload): Json<InteractRequest>,
 ) -> Result<Json<InteractResponse>, StatusCode> {
-    info!("Interact request for agent: {}, prompt length: {}", agent_id, payload.prompt.len());
+    info!(
+        "Interact request for agent: {}, prompt length: {}",
+        agent_id,
+        payload.prompt.len()
+    );
 
     let agent = {
         let agents = state.agents.read().unwrap();
-        agents.get(&agent_id).cloned().ok_or(StatusCode::NOT_FOUND)?
+        agents
+            .get(&agent_id)
+            .cloned()
+            .ok_or(StatusCode::NOT_FOUND)?
     };
 
     // Create owner message
@@ -175,7 +184,11 @@ pub async fn interact_agent(
     };
 
     // Send to channel (non-blocking; loop will append)
-    if let Err(e) = agent.cmd_tx.send(ChatCommand::AddMessage(user_msg.clone())).await {
+    if let Err(e) = agent
+        .cmd_tx
+        .send(ChatCommand::AddMessage(user_msg.clone()))
+        .await
+    {
         error!("Failed to send msg to agent {}: {}", agent_id, e);
         return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
@@ -192,12 +205,17 @@ pub async fn interact_agent(
         .map(|cm| match cm.role {
             Role::User => RigMessage::user(cm.content.clone()),
             Role::Assistant => RigMessage::assistant(cm.content.clone()),
-            _ => RigMessage::assistant(cm.content.clone()),  // Fold to Assistant
+            _ => RigMessage::assistant(cm.content.clone()), // Fold to Assistant
         })
         .collect();
 
-    info!("Calling Rig chat for agent {} with {} msg history...", agent_id, rig_hist.len());
-    let response = match agent.rig.chat(payload.prompt.clone(), rig_hist).await {  // Clone prompt for Into
+    info!(
+        "Calling Rig chat for agent {} with {} msg history...",
+        agent_id,
+        rig_hist.len()
+    );
+    let response = match agent.rig.chat(payload.prompt.clone(), rig_hist).await {
+        // Clone prompt for Into
         Ok(resp) => {
             let agent_resp = CustomMessage {
                 role: Role::Assistant,
@@ -206,7 +224,29 @@ pub async fn interact_agent(
                 timestamp: Utc::now(),
             };
             history.push(agent_resp);
-            info!("Chat succeeded for {} (response len: {})", agent_id, resp.len());
+            info!(
+                "Chat succeeded for {} (response len: {})",
+                agent_id,
+                resp.len()
+            );
+
+            // Update DB timestamp for decay oracle (bind timestamp to avoid temporary drop)
+            let timestamp = Utc::now().timestamp();
+            let ts_update = sqlx::query!(
+                "UPDATE agents SET last_interact_ts = ? WHERE agent_id = ?",
+                timestamp,
+                agent_id
+            )
+            .execute(&state.db_pool)
+            .await;
+
+            if let Err(e) = ts_update {
+                error!(
+                    "Failed to update last_interact_ts for {}: {:?}",
+                    agent_id, e
+                );
+            }
+
             resp
         }
         Err(e) => {
@@ -220,13 +260,12 @@ pub async fn interact_agent(
     Ok(Json(InteractResponse { response }))
 }
 
-
 /// Handler for listing all running agents from in-memory state.
 pub async fn list_agents(State(state): State<AppState>) -> Json<Vec<AgentInfo>> {
     let agents = state.agents.read().unwrap();
     let agent_list: Vec<AgentInfo> = agents
         .values()
-        .cloned() 
+        .cloned()
         .map(|agent| AgentInfo {
             id: agent.id.clone(),
             profile: agent.profile.clone(),
@@ -249,7 +288,11 @@ pub async fn delete_agent(
             return Err(StatusCode::NOT_FOUND);
         }
         agents.remove(&agent_id);
-        info!("Removed agent {} from memory ({} agents remaining)", agent_id, agents.len());
+        info!(
+            "Removed agent {} from memory ({} agents remaining)",
+            agent_id,
+            agents.len()
+        );
     }
 
     // delete from db
@@ -274,7 +317,7 @@ pub async fn delete_agent(
     }
 }
 /// Handler for fetching an agent's full chat history (for owner/debug).
-#[axum::debug_handler]  // Keep for diagnostics
+#[axum::debug_handler] // Keep for diagnostics
 pub async fn get_history(
     Path(agent_id): Path<String>,
     State(state): State<AppState>,
@@ -284,8 +327,11 @@ pub async fn get_history(
     // Scope the read lock: Extract agent, drop guard *before* async await
     let agent = {
         let agents = state.agents.read().unwrap();
-        agents.get(&agent_id).cloned().ok_or(StatusCode::NOT_FOUND)?
-    };  // Guard dropped here—future is Send
+        agents
+            .get(&agent_id)
+            .cloned()
+            .ok_or(StatusCode::NOT_FOUND)?
+    }; // Guard dropped here—future is Send
 
     // Now safe: Async lock after sync read
     let history_json = {
@@ -294,8 +340,12 @@ pub async fn get_history(
             error!("JSON serialize failed for {}: {:?}", agent_id, e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?
-    };  // Async lock dropped
+    }; // Async lock dropped
 
-    info!("Returned {} history entries for {}", history_json.len(), agent_id);
+    info!(
+        "Returned {} history entries for {}",
+        history_json.len(),
+        agent_id
+    );
     Ok(Json(history_json))
 }

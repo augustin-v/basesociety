@@ -46,7 +46,7 @@ This crate is a background service that acts as the "Dungeon Master" for the on-
     1.  **Happiness Decay Loop:** Periodically (e.g., every hour), it will connect to the blockchain, read the `lastPassionTimestamp` for all agents registered with the `DecayOracle`, and if the decay threshold is met, it will call the `DecayOracle.updateAgentHappiness()` function to decrease the agent's on-chain happiness score.
     2.  **x402 Event Monitoring:** It will monitor for off-chain payment events. When it detects that an agent has successfully "paid for a passion," it will call `DecayOracle.updateAgentHappiness()` to increase its happiness.
     3.  **On-Chain Transaction Submission:** This service will securely hold the private key for the wallet that owns the `DecayOracle.sol` contract. It will use this key to sign and send all necessary transactions.
--   **Key Technologies:** `ethers-rs` (for blockchain interaction), `tokio::time::interval` (for the decay loop).
+-   **Key Technologies:** `alloy` (for blockchain interaction), `tokio::time::interval` (for the decay loop).
 
 ### Crate 3: `shared`
 
@@ -57,7 +57,7 @@ This is a common library crate used by `ai_execution` and `oracle_service` to av
     -   Define shared data structures that mirror the smart contracts (e.g., `AgentProfile`).
     -   Define the application's configuration struct.
     -   Provide common utility functions, custom error types, and database connection logic.
--   **Key Technologies:** `serde`, `ethers-rs` (for types like `Address`), `sqlx`.
+-   **Key Technologies:** `serde`, `alloy` `sqlx`.
 
 ---
 

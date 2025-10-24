@@ -1,3 +1,21 @@
 [workspace]
 resolver = "3"
 members = ["crates/ai_execution", "crates/oracle_service", "crates/shared"]
+
+[workspace.dependencies]
+alloy = { version = "1.0.41", features = ["sol-types", "signers", "providers", "rpc-types-eth", "network"] }
+anyhow = "1.0.100"
+axum = { version = "0.8.6", features = ["macros"] }
+chrono = { version = "0.4.42", features = ["serde"] }
+dotenvy = "0.15.7"
+futures = "0.3.31"
+hex = "0.4"
+reqwest = "0.12.24"
+rig-core = "0.22.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "sqlite", "migrate"] }
+tokio = { version = "1.48.0", features = ["full"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
+url = "2.5.7"

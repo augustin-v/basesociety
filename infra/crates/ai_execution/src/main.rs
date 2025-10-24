@@ -1,7 +1,7 @@
 pub mod models;
 pub mod handlers;
 
-use axum::{routing::{get, post}, Router};
+use axum::{routing::{get, post, delete}, Router};
 use models::AppState;
 use sqlx::{migrate::MigrateDatabase, Sqlite, SqlitePool};
 use std::{
@@ -11,7 +11,7 @@ use std::{
 };
 use tracing::info;
 
-use crate::handlers::launch_agent;
+use crate::handlers::{interact_agent, launch_agent, list_agents, delete_agent};
 
 const DB_URL: &str = "sqlite:agents.db";
 
@@ -40,9 +40,13 @@ async fn main() {
     };
 
     let app = Router::new()
-        .route("/", get(root))
-        .route("/agents", post(launch_agent))
-        .with_state(state);
+    .route("/", get(root))
+    .nest("/agents", Router::new()
+        .route("/", post(launch_agent).get(list_agents))  // POST/GET /agents
+        .route("/{id}/interact", post(interact_agent))     // POST /agents/{id}/interact
+        .route("/{id}", delete(delete_agent))              // DELETE /agents/{id}
+    )
+    .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
     info!("listening on {}", addr);

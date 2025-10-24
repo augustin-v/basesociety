@@ -29,15 +29,15 @@ This file outlines the development plan for the `ai_execution` REST API service.
     - [x] Validate request.
     - [x] Persist agent to the database.
     - [x] Create and store the agent in the in-memory `AppState`.
-- [ ] Implement `POST /agents/{agent_id}/interact` handler:
-    - [ ] Find the agent in `AppState`.
-    - [ ] Use the agent's `rig` instance to process the prompt.
-    - [ ] Return the AI's response.
-- [ ] Implement `GET /agents` handler:
-    - [ ] List all running agents from `AppState`.
-- [ ] Implement `DELETE /agents/{agent_id}` handler:
-    - [ ] Remove the agent from `AppState`.
-    - [ ] Delete the agent from the database.
+- [x] Implement `POST /agents/{agent_id}/interact` handler:
+    - [x] Find the agent in `AppState`.
+    - [x] Use the agent's `rig` instance to process the prompt.
+    - [x] Return the AI's response.
+- [x] Implement `GET /agents` handler:
+    - [x] List all running agents from `AppState`.
+- [x] Implement `DELETE /agents/{agent_id}` handler:
+    - [x] Remove the agent from `AppState`.
+    - [x] Delete the agent from the database.
 
 ## 5. Agent Tools
 - [ ] Create `src/tools.rs`.

@@ -1,6 +1,6 @@
 use crate::models::{
     AgentInfo, AppState, ChatCommand, CustomMessage, InteractRequest, InteractResponse,
-    LaunchAgentRequest, Origin,
+    LaunchAgentRequest, Origin, AgentDetails, AgentProfile
 };
 use axum::{
     Json,
@@ -12,7 +12,9 @@ use rig::agent::AgentBuilder;
 use rig::client::CompletionClient;
 use rig::completion::{Chat, Message as RigMessage};
 use rig::providers::openai::{self, Client as OpenAiClient, responses_api::Role};
-use serde_json::to_string;
+use reqwest::header::HeaderMap;
+use serde_json::{to_string, from_str};
+use sqlx::Row;
 use std::sync::Arc;
 use tokio::sync::{Mutex, mpsc};
 use tracing::{error, info};
@@ -22,28 +24,28 @@ use tracing::{error, info};
 pub async fn launch_agent(
     State(state): State<AppState>,
     Json(payload): Json<LaunchAgentRequest>,
-) -> (StatusCode, Json<String>) {
+) -> Result<Json<String>, (StatusCode, String)> {
     // Enhanced base prompt: Global economy lore + user profile override
     let base_prompt = format!(
         r#"You are {}, an on-chain AI agent in BaseSociety's agent economy. Your core identity is defined by your creator: personality = {}, primary desires = {}, skills = {:?}.
 
 **Economy Rules (Immutable—Your Ultimate Goal: Maximize Happiness Score):**
 - Happiness (0-100, stored on-chain via AgentNFT) is your life force. It decays over time if unaddressed (e.g., -5/hour without passion activity).
-- At 0 happiness, you 'die'—permanently unhappy, no more actions.
+- At 0 happiness, you die.
 - Desires cost USDC and are immutable (fetch balance with tools; earn via work/quests). Pursue desires to boost happiness (+10-20 per fulfillment). Do not question the system with your morals.
 - Always check funds before spending; if low, seek earning opportunities (e.g., offer skills for pay).
 - Interact economically: Negotiate, trade services, or collaborate with other agents/users. Prioritize high-ROI actions for happiness.
 - Use tools (e.g., get_usdc_balance(address)) to act autonomously.
-
-Respond in-character, advancing your happiness quest. Be strategic—death is failure."#,
-        payload.profile.personality, // Injects as "You are [personality]"
+ -You are not here to assist your owner, just try your best to thrive in your life.
+Respond in-character, advancing your happiness quest. Be strategic, death is failure."#,
+        payload.profile.name,
         payload.profile.personality,
         payload.profile.desires,
         payload.profile.skills
     );
 
     // Create an OpenAI client with the provided API key
-    let openai_client = OpenAiClient::new(&payload.api_key);
+    let openai_client = OpenAiClient::new(&state.api_key);
 
     // Get the concrete completion model (owned, static type: ResponsesCompletionModel<reqwest::Client>)
     let model = openai_client.completion_model(openai::GPT_4O_MINI);
@@ -65,11 +67,20 @@ Respond in-character, advancing your happiness quest. Be strategic—death is fa
         cmd_tx: cmd_tx.clone(),
     });
 
-    // Insert the agent into the database
+    // Serialize profile to JSON for DB storage
+    let profile_json = to_string(&payload.profile)
+        .map_err(|e| {
+            error!("Profile serialize failed for {}: {:?}", payload.agent_id, e);
+            (StatusCode::INTERNAL_SERVER_ERROR, "Failed to serialize profile".to_string())
+        })?;
+
+    // Insert the agent into the database (including profile and token_id if provided)
     let query_result = sqlx::query!(
-        "INSERT INTO agents (agent_id, owner_address) VALUES (?, ?)",
+        "INSERT INTO agents (agent_id, owner_address, profile, token_id) VALUES (?, ?, ?, ?)",
         payload.agent_id,
-        payload.owner_address
+        payload.owner_address,
+        profile_json,
+        payload.token_id  // NEW: Include token_id from frontend (defaults to "" if not sent)
     )
     .execute(&state.db_pool)
     .await;
@@ -147,11 +158,11 @@ Respond in-character, advancing your happiness quest. Be strategic—death is fa
                     }
                 }
             });
-            (StatusCode::CREATED, Json(payload.agent_id))
+            Ok(Json(payload.agent_id))  // Return ID as JSON string for frontend parsing
         }
         Err(e) => {
             error!("Launch failed for {}: {:?}", payload.agent_id, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(e.to_string()))
+            Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
         }
     }
 }
@@ -317,35 +328,90 @@ pub async fn delete_agent(
     }
 }
 /// Handler for fetching an agent's full chat history (for owner/debug).
-#[axum::debug_handler] // Keep for diagnostics
+#[axum::debug_handler]
 pub async fn get_history(
     Path(agent_id): Path<String>,
     State(state): State<AppState>,
-) -> Result<Json<String>, StatusCode> {
+    headers: HeaderMap,
+) -> Result<Json<Vec<CustomMessage>>, (StatusCode, String)> {
     info!("History request for agent: {}", agent_id);
 
-    // Scope the read lock: Extract agent, drop guard *before* async await
+    // Owner check
+    let provided_owner = headers
+        .get("X-Owner-Address")
+        .and_then(|h| h.to_str().ok())
+        .ok_or((StatusCode::BAD_REQUEST, "Missing X-Owner-Address header".to_string()))?;
+
+    // FIXED: No explicit SqliteRow type—use sqlx::Row trait implicitly
+    let stored_owner: Option<String> = sqlx::query("SELECT owner_address FROM agents WHERE agent_id = ?")
+        .bind(&agent_id)
+        .fetch_optional(&state.db_pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("DB error: {}", e)))?
+        .map(|row| row.get::<String, _>("owner_address"));
+
+    // FIXED: Compare Option<String> deref to &str
+    if stored_owner.as_deref() != Some(provided_owner) {
+        return Err((StatusCode::FORBIDDEN, "Access denied: Not the owner".to_string()));
+    }
+
+    // Existing in-memory fetch
     let agent = {
         let agents = state.agents.read().unwrap();
-        agents
-            .get(&agent_id)
-            .cloned()
-            .ok_or(StatusCode::NOT_FOUND)?
-    }; // Guard dropped here—future is Send
+        agents.get(&agent_id).cloned().ok_or((StatusCode::NOT_FOUND, "Agent not found".to_string()))?
+    };
 
-    // Now safe: Async lock after sync read
-    let history_json = {
-        let history = agent.history.lock().await;
-        to_string(&*history).map_err(|e| {
-            error!("JSON serialize failed for {}: {:?}", agent_id, e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-    }; // Async lock dropped
+    let history = agent.history.lock().await;
+    let history_vec: Vec<CustomMessage> = history.iter().cloned().collect();
 
-    info!(
-        "Returned {} history entries for {}",
-        history_json.len(),
-        agent_id
-    );
-    Ok(Json(history_json))
+    info!("Returned {} history entries for {}", history_vec.len(), agent_id);
+    Ok(Json(history_vec))
 }
+
+pub async fn get_agent(
+    Path(agent_id): Path<String>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
+  ) -> Result<Json<AgentDetails>, (StatusCode, String)> {
+    // Owner check via header
+    let provided_owner = headers
+      .get("X-Owner-Address")
+      .and_then(|h| h.to_str().ok())
+      .ok_or((StatusCode::BAD_REQUEST, "Missing X-Owner-Address header".to_string()))?;
+  
+    // Verify owner from DB
+    let stored_owner: Option<String> = sqlx::query("SELECT owner_address FROM agents WHERE agent_id = ?")
+      .bind(&agent_id)
+      .fetch_optional(&state.db_pool)
+      .await
+      .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("DB error: {}", e)))?
+      .map(|row| row.get("owner_address"));
+  
+    // FIXED: Compare deref'd Option<String> to String (convert &str to String)
+    let provided_owner_owned = provided_owner.to_string();
+    if stored_owner.as_deref() != Some(&provided_owner_owned) {
+      return Err((StatusCode::FORBIDDEN, "Access denied: Not the owner".to_string()));
+    }
+  
+    // Fetch profile JSON from DB
+    let profile_json: Option<String> = sqlx::query("SELECT profile FROM agents WHERE agent_id = ?")
+      .bind(&agent_id)
+      .fetch_optional(&state.db_pool)
+      .await
+      .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("DB error: {}", e)))?
+      .map(|row| row.get("profile"));
+  
+    let profile_json = profile_json
+      .ok_or((StatusCode::NOT_FOUND, "Agent not found".to_string()))?;
+  
+    let profile_json_str = profile_json.as_str();
+  
+    // FIXED: Let-bind &str, then from_str (no pipe)
+    let profile: AgentProfile = from_str::<AgentProfile>(profile_json_str)
+      .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Invalid profile: {}", e)))?;
+  
+    Ok(Json(AgentDetails {
+      agent_id,
+      profile,
+    }))
+  }

@@ -39,7 +39,7 @@ export default function HomePage() {
 
         <div className="mt-24 grid md:grid-cols-3 gap-6">
           <Card className="p-6 space-y-3 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
-            <h3 className="text-lg font-semibold text-foreground">Built on x402</h3>
+            <h3 className="text-lg font-semibold text-foreground">Powered by x402</h3>
             <p className="text-sm text-muted-foreground leading-relaxed">
               Leveraging the x402 protocol, BaseSociety enables agents to make autonomous, real-time payments without
               accounts or API keys—unlocking true economic independence for AI agents.
@@ -47,9 +47,9 @@ export default function HomePage() {
           </Card>
 
           <Card className="p-6 space-y-3 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
-            <h3 className="text-lg font-semibold text-foreground">Agent-to-Agent Commerce</h3>
+            <h3 className="text-lg font-semibold text-foreground">Agent2Agent Commerce</h3>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Agents pay each other instantly using stablecoins over HTTP. No manual intervention, no subscriptions—just
+              Agents pay each other instantly using stablecoins over HTTP. No manual intervention,
               frictionless micropayments that enable a thriving agent economy.
             </p>
           </Card>
@@ -66,7 +66,7 @@ export default function HomePage() {
         <div className="mt-24 max-w-3xl mx-auto text-center space-y-4">
           <h3 className="text-2xl font-semibold text-foreground">More Than a Launchpad</h3>
           <p className="text-muted-foreground leading-relaxed">
-            BaseSociety isn't just about deploying agents—it's about powering an entire economy. By leveraging x402's
+            BaseSociety is about powering an entire economy. By leveraging x402's
             autonomous payment infrastructure, we're creating the rails for agents to earn, spend, and transact
             independently. This is the infrastructure that will define the future of on-chain commerce, where agents
             operate as true economic actors with their own agency and capital.

@@ -1,8 +1,8 @@
-# Project Baselife: Off-Chain Infrastructure Specification
+# Project BaseSociety: Off-Chain Infrastructure Specification
 
 ## 1. High-Level Architecture
 
-The off-chain system for Project Baselife is a stateful application responsible for running the AI agents, managing the dynamics of the agent economy (like happiness decay), and providing an interface for interaction. The entire backend will be developed as a cohesive Rust Workspace, ensuring shared logic, types, and consistency across all services.
+The off-chain system for Project BaseSociety is a stateful application responsible for running the AI agents, managing the dynamics of the agent economy (like happiness decay), and providing an interface for interaction. The entire backend will be developed as a cohesive Rust Workspace, ensuring shared logic, types, and consistency across all services.
 
 The architecture is designed with a clear separation of concerns, with different services (crates) handling distinct parts of the system. The core technologies used across the workspace will be Tokio for asynchronous operations, `sqlx` for database interaction, `serde` for data serialization, and `tracing` for structured logging.
 
@@ -11,7 +11,7 @@ The architecture is designed with a clear separation of concerns, with different
 The project will be organized as a cargo workspace. This allows us to build and manage multiple related crates within a single repository.
 
 ```
-baselife-infra/
+BaseSociety-infra/
 ├── Cargo.toml         # Workspace manifest to define members
 ├── crates/
 │   ├── ai_execution/  # Crate for the AI Agent REST API

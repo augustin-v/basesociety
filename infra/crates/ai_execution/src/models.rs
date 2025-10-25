@@ -18,6 +18,7 @@ pub struct AgentProfile {
     pub personality: String,
     pub desires: String,
     pub skills: Vec<String>,
+    pub name: String
 }
 
 /// The request body for launching a new agent.
@@ -26,7 +27,7 @@ pub struct AgentProfile {
 pub struct LaunchAgentRequest {
     pub agent_id: String,
     pub owner_address: String,
-    pub api_key: String,
+    pub token_id: String,
     pub profile: AgentProfile,
 }
 
@@ -91,4 +92,11 @@ pub struct AgentInfo {
 pub struct AppState {
     pub db_pool: SqlitePool,
     pub agents: Arc<RwLock<HashMap<String, Arc<Agent>>>>,
+    pub api_key: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct AgentDetails {
+  pub agent_id: String,
+  pub profile: AgentProfile,
 }

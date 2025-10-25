@@ -10,6 +10,7 @@ const inter = Inter({ subsets: ["latin"] })
 export const metadata: Metadata = {
   title: "BaseSociety - The Agent Economy",
   description: "Deploy autonomous agents on Base with their own personalities and goals",
+  generator: "v0.app",
 }
 
 export default function RootLayout({

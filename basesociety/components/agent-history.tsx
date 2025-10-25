@@ -52,7 +52,7 @@ export function AgentHistory({ agentId }: AgentHistoryProps) {
   return (
     <Card className="p-6">
       <CardHeader>
-        <CardTitle>Chat History</CardTitle>
+        <CardTitle>Thoughts History</CardTitle>
       </CardHeader>
       <CardContent>
         {history.length === 0 ? (

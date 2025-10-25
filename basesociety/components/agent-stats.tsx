@@ -108,7 +108,7 @@ export function AgentStats({ agentId }: { agentId?: string }) {
           )}
           {/* NEW: History Toggle */}
           <Button onClick={() => setShowHistory(!showHistory)} className="mt-4">
-            {showHistory ? "Hide" : "View"} Full History
+            {showHistory ? "Hide" : "View"} Thoughts History
           </Button>
         </CardContent>
       </Card>
